@@ -8,7 +8,7 @@ import (
 
 	"time"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/mwitkow/go-conntrack"
 	"github.com/mwitkow/go-httpwares/tags"
 	"github.com/mwitkow/kedge/http/backendpool"

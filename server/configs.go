@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/golang/protobuf/proto"
 	"github.com/mwitkow/go-flagz/protobuf"
 	"github.com/mwitkow/go-proto-validators"

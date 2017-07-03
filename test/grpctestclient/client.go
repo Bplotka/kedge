@@ -5,7 +5,7 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	google_protobuf "github.com/golang/protobuf/ptypes/empty"
 	pb_base "github.com/mwitkow/kedge/_protogen/base"
 
