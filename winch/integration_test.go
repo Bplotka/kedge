@@ -108,7 +108,7 @@ func (s *WinchIntegrationSuite) SetupSuite() {
 	// It does not make sense if kedge is not secure.
 	s.localSecureKedges.SetupKedges(s.T(), http2ServerTlsConfig, 3)
 
-	s.routes, err = winch.NewStaticRoutes(&pb.MapperConfig{
+	testConfig := &pb.MapperConfig{
 		Routes: []*pb.Route{
 			{
 				Type: &pb.Route_Direct{
@@ -136,11 +136,19 @@ func (s *WinchIntegrationSuite) SetupSuite() {
 				},
 			},
 		},
-	})
+	}
+	s.routes, err = winch.NewStaticRoutes(testConfig)
 	require.NoError(s.T(), err, "config must be parsable")
 
+	pacHandler, err := winch.NewPac(s.winchListenerPlain.Addr().String(), testConfig)
+	require.NoError(s.T(), err, "pac should init")
+
+	assert.Equal(s.T(), expectedPAC(s.winchListenerPlain.Addr().String()), string(pacHandler.PAC))
+
+	http.Handle("/pac", pacHandler)
+	http.Handle("/", winch.New(kedge_map.RouteMapper(s.routes), s.tlsClientConfigForTest()))
 	s.winch = &http.Server{
-		Handler: winch.New(kedge_map.RouteMapper(s.routes), s.tlsClientConfigForTest()),
+		Handler: http.DefaultServeMux,
 	}
 	go func() {
 		s.winch.Serve(s.winchListenerPlain)
@@ -265,4 +273,39 @@ func urlMustParse(uStr string) *url.URL {
 		panic(err)
 	}
 	return u
+}
+
+func expectedPAC(winchHostPort string) string {
+	return fmt.Sprintf(`function FindProxyForURL(url, host) {
+	var proxy = "PROXY %s; DIRECT";
+    var direct = "DIRECT";
+
+	// no proxy for local hosts without domain:
+    if(isPlainHostName(host)) return direct;
+
+	// We only proxy http, not even https.
+     if (
+         url.substring(0, 4) == "ftp:" ||
+         url.substring(0, 6) == "rsync:" ||
+         url.substring(0, 6) == "https:"
+        )
+    return direct;
+
+	// Commented for debug purposes.
+  	// Use direct connection whenever we have direct network connectivity.
+    //if (isResolvable(host)) {
+    //    return direct
+    //}
+    if (dnsDomainIs(host, resource1.ext.example.com)) {
+        return proxy;
+    }
+    if (dnsDomainIs(host, resource2.ext.example.com)) {
+        return proxy;
+    }
+    if (shExpMatch(host, ([a-z0-9-].*).(?P<cluster>[a-z0-9-].*).internal.example.com)) {
+        return proxy;
+    }
+
+    return direct;
+}`, winchHostPort)
 }

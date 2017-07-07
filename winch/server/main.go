@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -23,7 +24,6 @@ import (
 	"github.com/pressly/chi"
 	log "github.com/sirupsen/logrus"
 	_ "golang.org/x/net/trace" // so /debug/request gets registered.
-	"crypto/tls"
 )
 
 var (
@@ -49,10 +49,10 @@ func validateMapper(msg proto.Message) error {
 
 func main() {
 	if err := sharedflags.Set.Parse(os.Args); err != nil {
-		log.WithError(err).Fatalf("failed parsing flags")
+		log.WithError(err).Fatal("failed parsing flags")
 	}
 	if err := flagz.ReadFileFlags(sharedflags.Set); err != nil {
-		log.WithError(err).Fatalf("failed reading flagz from files")
+		log.WithError(err).Fatal("failed reading flagz from files")
 	}
 
 	log.SetOutput(os.Stdout)
@@ -60,13 +60,25 @@ func main() {
 
 	routes, err := winch.NewStaticRoutes(flagConfigMapper.Get().(*pb_config.MapperConfig))
 	if err != nil {
-		log.Fatalf("failed reading flagz from files: %v", err)
+		log.WithError(err).Fatal("failed reading flagz from files")
 	}
 
+	var httpPlainListener net.Listener
+	httpPlainListener = buildListenerOrFail("http_plain", *flagHttpPort)
+	log.Infof("listening for HTTP Plain on: %v", httpPlainListener.Addr().String())
+
 	http.Handle("/debug/flagz", http.HandlerFunc(flagz.NewStatusEndpoint(sharedflags.Set).ListFlags))
+
+	pacHandle, err := winch.NewPac(httpPlainListener.Addr().String(), flagConfigMapper.Get().(*pb_config.MapperConfig))
+	if err != nil {
+		log.WithError(err).Fatalf("failed to init PAC handler")
+	}
+
+	http.Handle("/pac", pacHandle)
 	http.Handle("/", winch.New(kedge_map.RouteMapper(routes),
 		// TODO(bplotka): Only for debug purposes.
-		&tls.Config{InsecureSkipVerify: true}))
+		&tls.Config{InsecureSkipVerify: true},
+	))
 	winchServer := &http.Server{
 		WriteTimeout: *flagHttpMaxWriteTimeout,
 		ReadTimeout:  *flagHttpMaxReadTimeout,
@@ -77,10 +89,6 @@ func main() {
 			http_logrus.Middleware(logEntry),
 		).Handler(http.DefaultServeMux),
 	}
-
-	var httpPlainListener net.Listener
-	httpPlainListener = buildListenerOrFail("http_plain", *flagHttpPort)
-	log.Infof("listening for HTTP Plain on: %v", httpPlainListener.Addr().String())
 
 	// Serve.
 	if err := winchServer.Serve(httpPlainListener); err != nil {
