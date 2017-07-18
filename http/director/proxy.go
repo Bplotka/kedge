@@ -133,15 +133,13 @@ func AuthMiddleware(authorizer authorize.Authorizer) httpwares.Middleware {
 				return
 			}
 			// Request authorized - continue.
+			nextHandler.ServeHTTP(resp, req)
 		})
 	}
 }
 
 func respondWithUnauthorized(err error, req *http.Request, resp http.ResponseWriter) {
 	status := http.StatusUnauthorized
-	if rErr, ok := (err).(*router.Error); ok {
-		status = rErr.StatusCode()
-	}
 	http_ctxtags.ExtractInbound(req).Set(logrus.ErrorKey, err)
 	resp.Header().Set("x-kedge-error", err.Error())
 	resp.Header().Set("content-type", "text/plain")
